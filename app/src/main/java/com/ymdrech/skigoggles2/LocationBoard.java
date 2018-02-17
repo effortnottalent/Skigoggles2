@@ -13,13 +13,12 @@ import org.apache.commons.collections4.CollectionUtils;
 
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 import java.util.stream.Collectors;
-import java.util.stream.StreamSupport;
 
 /**
  * Created by richard.mathias on 14/02/2018.
@@ -33,6 +32,16 @@ public class LocationBoard {
     private Set<LocationItem> locationItems = new HashSet<>();
     private float maxRangeMetres = DEFAULT_MAX_RANGE_METRES;
     private Set<KmlLayer> kmlLayerSet;
+    private double calculatedSpeed;
+    private double calculatedBearing;
+
+    public double getCalculatedSpeed() {
+        return calculatedSpeed;
+    }
+
+    public double getCalculatedBearing() {
+        return calculatedBearing;
+    }
 
     public Set<KmlLayer> getKmlLayerSet() {
         return kmlLayerSet;
@@ -66,6 +75,8 @@ public class LocationBoard {
     }
 
     public void setLocationAndUpdateItems(Location location) {
+        calculatedSpeed = getInstantaneousSpeed(this.location, location);
+        calculatedBearing = getCalculatedBearing(this.location, location);
         this.location = location;
         updateLocationItems();
     }
@@ -82,7 +93,31 @@ public class LocationBoard {
         this.maxRangeMetres = maxRangeMetres;
     }
 
-    protected void updateLocationItems() {
+    private double getCalculatedBearing(Location beforeLocation, Location afterLocation) {
+
+        if(beforeLocation == null || afterLocation == null) {
+            return 0.0;
+        }
+        return SphericalUtil.computeHeading(
+                new LatLng(beforeLocation.getLatitude(), beforeLocation.getLongitude()),
+                new LatLng(afterLocation.getLatitude(), afterLocation.getLongitude()));
+
+    }
+
+    private double getInstantaneousSpeed(Location beforeLocation, Location afterLocation) {
+
+        if(beforeLocation == null || afterLocation == null) {
+            return 0.0;
+        }
+        double distance = SphericalUtil.computeDistanceBetween(
+                new LatLng(beforeLocation.getLatitude(), beforeLocation.getLongitude()),
+                new LatLng(afterLocation.getLatitude(), afterLocation.getLongitude()));
+        double time = afterLocation.getElapsedRealtimeNanos() - beforeLocation.getElapsedRealtimeNanos();
+        return distance / time * 1e9;
+
+    }
+
+    private void updateLocationItems() {
 
         if(location == null) {
             return;
@@ -122,7 +157,7 @@ public class LocationBoard {
                 locationItems.toArray(new LocationItem[0])).stream()
                 .sorted(Comparator.comparing(LocationItem::getDistanceFromStart))
                 .map(locationItem ->
-                        String.format("%s (%s): %.0fm %s",
+                        String.format(Locale.ENGLISH, "%s (%s): %.0fm %s",
                                 locationItem.getPlacemark().getProperty("name"),
                                 locationItem.getPlacemark().getProperty("description"),
                                 locationItem.getDistanceFromStart(),
@@ -132,7 +167,7 @@ public class LocationBoard {
 
     }
 
-    private String bearingToCompassPoint(double bearing) {
+    public static String bearingToCompassPoint(double bearing) {
         String[] compassPoints = {
                 "N", "NNE", "NE", "ENE",
                 "E", "ESE", "SE", "SSE",
@@ -140,7 +175,7 @@ public class LocationBoard {
                 "W", "WNW", "NW", "NNW" };
         int index = Long.valueOf(Math.round((bearing + 360) / 22.5)).intValue() % 16;
         Log.d(String.format("bearing: %.2f -> index: %d", bearing, index),
-                getClass().getCanonicalName());
+                LocationBoard.class.getCanonicalName());
         return compassPoints[index];
     }
 

@@ -35,6 +35,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Stream;
@@ -45,6 +46,9 @@ import javax.xml.transform.TransformerException;
 import javax.xml.transform.TransformerFactory;
 import javax.xml.transform.stream.StreamResult;
 import javax.xml.transform.stream.StreamSource;
+
+import static com.ymdrech.skigoggles2.MapsActivity.InfoWindowPage.PAGE_NEAREST_RUNS;
+import static com.ymdrech.skigoggles2.MapsActivity.InfoWindowPage.PAGE_SPEED;
 
 public class MapsActivity extends FragmentActivity implements OnMapReadyCallback {
 
@@ -58,6 +62,11 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
     private TransformerFactory transformerFactory = TransformerFactory.newInstance();
     private Marker marker;
     private LocationBoard locationBoard;
+    private InfoWindowPage shownPage;
+
+    enum InfoWindowPage {
+        PAGE_NEAREST_RUNS, PAGE_SPEED
+    }
 
     private List<File> tempFilesToCleanupAfterTransform = new ArrayList<>();
 
@@ -96,6 +105,18 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
 
         googleMap.clear();
         routePolyline = googleMap.addPolyline(new PolylineOptions());
+        marker = googleMap.addMarker(new MarkerOptions()
+                .position(LATLNG_START_POS)
+                .title("")
+                .snippet("")
+                .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_AZURE)));
+        googleMap.setOnInfoWindowClickListener(thatMarker -> {
+            if(thatMarker.getId().equals(marker.getId())) {
+                switchInfoWindow();
+                updateInfoWindow(thatMarker);
+            }
+        });
+        shownPage = InfoWindowPage.PAGE_SPEED;
         googleMap.moveCamera(CameraUpdateFactory.newLatLngZoom(LATLNG_START_POS, 14f));
 
     }
@@ -148,22 +169,54 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
     void addNewLocation(GoogleMap googleMap, Location location) {
 
         Log.i(getClass().getCanonicalName(), "adding location " + location);
-        List<LatLng> points = routePolyline == null ? new ArrayList<LatLng>() : routePolyline.getPoints();
+        List<LatLng> points = routePolyline == null ? new ArrayList<>() : routePolyline.getPoints();
         LatLng latLng = new LatLng(location.getLatitude(), location.getLongitude());
         points.add(latLng);
         locationBoard.setLocationAndUpdateItems(location);
         routePolyline.setPoints(points);
-        if(marker == null) {
-            marker = googleMap.addMarker(new MarkerOptions()
-                    .position(latLng)
-                    .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_AZURE)));
-        } else {
-            marker.setPosition(latLng);
-        }
-        marker.setTitle(
-                String.format("<b>Nearest runs within %sm</b>", locationBoard.getMaxRangeMetres()));
-        marker.setSnippet(locationBoard.toString());
+        marker.setPosition(latLng);
+        updateInfoWindow(marker);
         googleMap.moveCamera(CameraUpdateFactory.newLatLng(latLng));
+
+    }
+
+    void switchInfoWindow() {
+
+        switch (shownPage) {
+            case PAGE_SPEED:
+                shownPage = PAGE_NEAREST_RUNS;
+                break;
+            case PAGE_NEAREST_RUNS:
+                shownPage = PAGE_SPEED;
+                break;
+        }
+    }
+
+    void updateInfoWindow(Marker marker) {
+        switch (shownPage) {
+            case PAGE_SPEED:
+                marker.setTitle(
+                        String.format("<b>Nearest runs within %sm</b>",
+                                locationBoard.getMaxRangeMetres()));
+                marker.setSnippet(locationBoard.toString());
+                break;
+            case PAGE_NEAREST_RUNS:
+                marker.setSnippet(null);
+                marker.setTitle(
+                        String.format(Locale.ENGLISH, "%.0f km/h, %s",
+                                locationBoard.getLocation().hasSpeed() ?
+                                        locationBoard.getLocation().getSpeed() :
+                                        locationBoard.getCalculatedSpeed(),
+                                LocationBoard.bearingToCompassPoint(
+                                        locationBoard.getLocation().hasBearing() ?
+                                                locationBoard.getLocation().getBearing() :
+                                                locationBoard.getCalculatedBearing()
+                                )));
+                break;
+        }
+        if(marker.isInfoWindowShown()) {
+            marker.showInfoWindow();
+        }
 
     }
 
@@ -185,7 +238,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         } catch (IOException e) {
             e.printStackTrace();
         } finally {
-            tempFilesToCleanupAfterTransform.forEach(file -> file.delete());
+            tempFilesToCleanupAfterTransform.forEach(File::delete);
             tempFilesToCleanupAfterTransform.clear();
         }
         locationBoard = new LocationBoard(layerSet);
