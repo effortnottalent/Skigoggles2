@@ -266,7 +266,7 @@
 		<SimpleData name="extrude">0</SimpleData>
 		<SimpleData name="visibility">-1</SimpleData>
 	</SchemaData></ExtendedData>
-      <LineString><coordinates>6.60927033998377,45.4172631678714,0 6.5976827963175,45.4315927400351,0</coordinates></LineString>
+      <LineString><coordinates>6.5976827963175,45.4315927400351,0 6.60927033998377,45.4172631678714,0</coordinates></LineString>
   </Placemark>
   <Placemark>
 	<name>Praz</name>
@@ -277,7 +277,7 @@
 		<SimpleData name="extrude">0</SimpleData>
 		<SimpleData name="visibility">-1</SimpleData>
 	</SchemaData></ExtendedData>
-      <LineString><coordinates>6.62998412447156,45.4173258346852,0 6.62028047085779,45.4317657312198,0</coordinates></LineString>
+      <LineString><coordinates>6.62028047085779,45.4317657312198,0 6.62998412447156,45.4173258346852,0</coordinates></LineString>
   </Placemark>
   <Placemark>
 	<name>Foret</name>
@@ -321,7 +321,7 @@
 		<SimpleData name="extrude">0</SimpleData>
 		<SimpleData name="visibility">-1</SimpleData>
 	</SchemaData></ExtendedData>
-      <LineString><coordinates>6.61615966681057,45.4110514868259,0 6.63237692883085,45.4202500448294,0</coordinates></LineString>
+      <LineString><coordinates>6.63237692883085,45.4202500448294,0 6.61615966681057,45.4110514868259,0</coordinates></LineString>
   </Placemark>
   <Placemark>
 	<name>Stade</name>

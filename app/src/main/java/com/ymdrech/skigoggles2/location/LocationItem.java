@@ -1,4 +1,4 @@
-package com.ymdrech.skigoggles2;
+package com.ymdrech.skigoggles2.location;
 
 import com.google.maps.android.data.kml.KmlPlacemark;
 
