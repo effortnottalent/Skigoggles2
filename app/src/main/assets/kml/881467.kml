@@ -288,7 +288,7 @@
 		<SimpleData name="extrude">0</SimpleData>
 		<SimpleData name="visibility">-1</SimpleData>
 	</SchemaData></ExtendedData>
-      <LineString><coordinates>6.61750736745741,45.4156816420522,0 6.62012332525333,45.4316965036916,0</coordinates></LineString>
+      <LineString><coordinates>6.62012332525333,45.4316965036916,0 6.61750736745741,45.4156816420522,0</coordinates></LineString>
   </Placemark>
   <Placemark>
 	<name>Epicea</name>

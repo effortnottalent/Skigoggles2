@@ -7,6 +7,7 @@ import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
+import android.graphics.Rect;
 import android.location.Location;
 import android.location.LocationListener;
 import android.location.LocationManager;
@@ -47,7 +48,6 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
@@ -153,61 +153,68 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                 .forEach(kmlPlacemark -> {
                     List<LatLng> points = LocationBoard.getPoints(kmlPlacemark);
                     if(points.size() > 0 && kmlPlacemark.getProperty("name") != null) {
-                        int pointIndex = Math.round(points.size() / 3);
-                        double bearing = getBearingFromPointOnLine(points, pointIndex);
+                        int pointIndex = Math.round(points.size() / 2);
+                        LatLng point = pointIndex == 1 ?
+                                SphericalUtil.interpolate(points.get(0), points.get(1), 0.5)
+                                : points.get(pointIndex);
+                        float bearing = getBearingFromPointOnLine(points, pointIndex);
                         String name = kmlPlacemark.getProperty("name").toUpperCase();
                         Marker marker = googleMap.addMarker(new MarkerOptions()
-                                .position(points.get(pointIndex))
+                                .position(point)
+                                .flat(true)
+                                .icon(createPureTextIcon(name))
+                                .anchor(0.5f, 0.5f)
+                                .rotation(bearing - 90)
                                 .title(name)
-                                .icon(createPureTextIcon(name, bearing)));
+                        );
                         marker.setTag("noclick");
                     }
                 });
     }
 
-    Double getBearingFromPointOnLine(List<LatLng> points, int pointIndex) {
+    float getBearingFromPointOnLine(List<LatLng> points, int pointIndex) {
         switch(points.size()) {
-            case 0: return null;
-            case 1: return null;
-            case 2: return SphericalUtil.computeHeading(points.get(0), points.get(1));
+            case 0: return 0f;
+            case 1: return 0f;
+            case 2: return Double.valueOf(SphericalUtil.computeHeading(points.get(0),
+                    points.get(1))).floatValue();
             default:
-                return (SphericalUtil.computeHeading(points.get(pointIndex - 1),
+                return Double.valueOf((SphericalUtil.computeHeading(points.get(pointIndex - 1),
                                 points.get(pointIndex)) +
                         SphericalUtil.computeHeading(points.get(pointIndex),
-                                points.get(pointIndex + 1))) / 2;
+                                points.get(pointIndex + 1))) / 2).floatValue();
         }
     }
 
-    BitmapDescriptor createPureTextIcon(String text, double bearing) {
+    BitmapDescriptor createPureTextIcon(String text) {
 
-        int stroke = 6;
+        int stroke = 4;
 
         Paint strokePaint = new Paint();
-        strokePaint.setTextSize(30);
-        strokePaint.setColor(Color.argb(200, 255, 255, 255));
+        strokePaint.setTextSize(18);
+        strokePaint.setColor(Color.argb(225, 255, 255, 255));
         strokePaint.setStyle(Paint.Style.STROKE);
         strokePaint.setStrokeWidth(stroke);
         strokePaint.setAntiAlias(true);
+
         Paint textPaint = new Paint();
-        textPaint.setTextSize(30);
-        textPaint.setColor(Color.argb(200, 100, 100, 100));
+        textPaint.setTextSize(18);
+        textPaint.setColor(Color.argb(200, 0, 0, 0));
         textPaint.setAntiAlias(true);
 
-        float textWidth = strokePaint.measureText(text);
-        float textHeight = strokePaint.getTextSize();
-        int width = (int) (textWidth);
-        int height = (int) (textHeight);
+        Rect textR = new Rect();
+        strokePaint.getTextBounds(text, 0, text.length(), textR);
+
+        int width = textR.width() + stroke;
+        int height = textR.height() + stroke;
 
         Bitmap image = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
         Canvas canvas = new Canvas(image);
-        //canvas.rotate(Double.valueOf(bearing).floatValue());
-        //canvas.drawColor(Color.WHITE);
         canvas.translate(0, height);
-        canvas.drawText(text, 0, -stroke/2, strokePaint);
-        canvas.drawText(text, 0, -stroke/2, textPaint);
+        canvas.drawText(text, 0, - stroke / 2, strokePaint);
+        canvas.drawText(text,  0, - stroke / 2, textPaint);
         return BitmapDescriptorFactory.fromBitmap(image);
     }
-
 
     void initMap(final GoogleMap googleMap) {
 
