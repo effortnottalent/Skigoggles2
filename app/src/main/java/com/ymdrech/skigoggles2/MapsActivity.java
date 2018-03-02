@@ -54,6 +54,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -85,6 +86,8 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
     private InfoWindowPage shownPage;
     private KmlLayerAlgorithm kmlLayerAlgorithm;
     private GoogleMap googleMap;
+    private LocationBroadcastService locationBroadcastService = new LocationBroadcastService();
+    private User user;
 
     enum InfoWindowPage {
         PAGE_NEAREST_RUNS, PAGE_SPEED
@@ -109,7 +112,14 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         SupportMapFragment mapFragment = (SupportMapFragment) getSupportFragmentManager()
                 .findFragmentById(R.id.map);
         mapFragment.getMapAsync(this);
+        createUser();
 
+    }
+
+    void createUser() {
+        user = new User();
+        user.setId(UUID.randomUUID().toString());
+        user.setName("Steve Gnarly");
     }
 
     @Override
@@ -303,6 +313,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         routePolyline.setPoints(points);
         marker.setPosition(latLng);
         updateInfoWindow(marker);
+        locationBroadcastService.broadcastToGroup(user, locationBoard, this);
 
     }
 

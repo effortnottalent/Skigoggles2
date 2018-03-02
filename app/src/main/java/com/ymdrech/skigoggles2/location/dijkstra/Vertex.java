@@ -3,25 +3,15 @@ package com.ymdrech.skigoggles2.location.dijkstra;
 import com.google.android.gms.maps.model.LatLng;
 import com.google.maps.android.data.kml.KmlPlacemark;
 
+import lombok.Data;
+
+@Data
 public class Vertex {
 
     final double MARGIN = 0.00000001d;
 
     private final LatLng latLng;
     private final KmlPlacemark placemark;
-
-    public Vertex(LatLng latLng, KmlPlacemark placemark) {
-        this.latLng = latLng;
-        this.placemark = placemark;
-    }
-
-    public LatLng getLatLng() {
-        return latLng;
-    }
-
-    public KmlPlacemark getPlacemark() {
-        return placemark;
-    }
 
     @Override
     public boolean equals(Object o) {
@@ -41,11 +31,4 @@ public class Vertex {
         return latLng != null ? latLng.hashCode() : 0;
     }
 
-    @Override
-    public String toString() {
-        return "Vertex{" +
-                "latLng=" + latLng +
-                ", placemark=" + placemark +
-                '}';
-    }
 }

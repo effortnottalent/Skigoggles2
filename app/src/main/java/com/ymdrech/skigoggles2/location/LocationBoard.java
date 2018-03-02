@@ -13,20 +13,25 @@ import org.apache.commons.collections4.CollectionUtils;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
+
+import lombok.Data;
 
 /**
  * Created by richard.mathias on 14/02/2018.
  */
 
+@Data
 public class LocationBoard {
 
     public static final float RUN_THRESHOLD_METRES = 100;
@@ -39,26 +44,6 @@ public class LocationBoard {
     private Set<KmlLayer> kmlLayerSet;
     private double calculatedSpeed;
     private double calculatedBearing;
-
-    public KmlPlacemark getPlacemark() {
-        return placemark;
-    }
-
-    public double getCalculatedSpeed() {
-        return calculatedSpeed;
-    }
-
-    public double getCalculatedBearing() {
-        return calculatedBearing;
-    }
-
-    public Set<KmlLayer> getKmlLayerSet() {
-        return kmlLayerSet;
-    }
-
-    public void setKmlLayerSet(Set<KmlLayer> kmlLayerSet) {
-        this.kmlLayerSet = kmlLayerSet;
-    }
 
     public LocationBoard(Location location, float maxRangeMetres, Set<KmlLayer> kmlLayerSet) {
         this.location = location;
@@ -95,8 +80,8 @@ public class LocationBoard {
 
         LatLng latLng = new LatLng(location.getLatitude(), location.getLongitude());
         Map<KmlPlacemark, Double> placemarkDistances = new HashMap<>();
-        kmlLayerSet.stream().map(kmlLayer -> getFlatListPlacemarks(kmlLayer))
-                .flatMap(layer -> layer.stream())
+        kmlLayerSet.stream().map(LocationBoard::getFlatListPlacemarks)
+                .flatMap(Collection::stream)
                 .collect(Collectors.toList()).stream()
                 .filter(kmlPlacemark -> getPoints(kmlPlacemark).size() != 0)
                 .forEach(kmlPlacemark ->
@@ -107,22 +92,10 @@ public class LocationBoard {
                                                     point -> SphericalUtil.computeDistanceBetween(
                                                             latLng, point)))
                                             .get())));
-        return StreamSupport.stream(placemarkDistances.entrySet().spliterator(), false)
-                .min(Comparator.comparing(entry -> entry.getValue()))
+        return placemarkDistances.entrySet().stream()
+                .min(Comparator.comparing(Map.Entry::getValue))
                 .get().getKey();
 
-    }
-
-    public Set<LocationItem> getLocationItems() {
-        return locationItems;
-    }
-
-    public float getMaxRangeMetres() {
-        return maxRangeMetres;
-    }
-
-    public void setMaxRangeMetres(float maxRangeMetres) {
-        this.maxRangeMetres = maxRangeMetres;
     }
 
     private double getCalculatedBearing(Location beforeLocation, Location afterLocation) {
@@ -162,44 +135,26 @@ public class LocationBoard {
         }
         LatLng currentLatLng = new LatLng(location.getLatitude(), location.getLongitude());
         Set<LocationItem> newLocationItems = new HashSet<>();
-        kmlLayerSet.forEach(kmlLayer -> {
-            getFlatListPlacemarks(kmlLayer).forEach(kmlPlacemark -> {
-                List<LatLng> points = getPoints(kmlPlacemark);
-                if (points.size() != 0) {
-                    double distanceFromStartMetres = SphericalUtil.computeDistanceBetween(
-                            currentLatLng, points.get(0));
-                    if(distanceFromStartMetres < maxRangeMetres) {
-                        LocationItem locationItem = new LocationItem();
-                        locationItem.setDistanceFromStart(distanceFromStartMetres);
-                        locationItem.setPlacemark(kmlPlacemark);
-                        locationItem.setBearingFromStart(
-                                SphericalUtil.computeHeading(currentLatLng, points.get(0)));
-                        if(!newLocationItems.contains(locationItem)) {
-                            newLocationItems.add(locationItem);
-                        }
+        kmlLayerSet.forEach(kmlLayer -> getFlatListPlacemarks(kmlLayer).forEach(kmlPlacemark -> {
+            List<LatLng> points = getPoints(kmlPlacemark);
+            if (points.size() != 0) {
+                double distanceFromStartMetres = SphericalUtil.computeDistanceBetween(
+                        currentLatLng, points.get(0));
+                if(distanceFromStartMetres < maxRangeMetres) {
+                    LocationItem locationItem = new LocationItem();
+                    locationItem.setDistanceFromStart(distanceFromStartMetres);
+                    locationItem.setPlacemark(kmlPlacemark);
+                    locationItem.setBearingFromStart(
+                            SphericalUtil.computeHeading(currentLatLng, points.get(0)));
+                    if(!newLocationItems.contains(locationItem)) {
+                        newLocationItems.add(locationItem);
                     }
                 }
-            });
-        });
+            }
+        }));
         if(newLocationItems != locationItems) {
             locationItems = newLocationItems;
         }
-
-    }
-
-    public String toString() {
-
-        return Arrays.asList(
-                locationItems.toArray(new LocationItem[0])).stream()
-                .sorted(Comparator.comparing(LocationItem::getDistanceFromStart))
-                .map(locationItem ->
-                        String.format(Locale.ENGLISH, "%s (%s): %.0fm %s",
-                                locationItem.getPlacemark().getProperty("name"),
-                                locationItem.getPlacemark().getProperty("description"),
-                                locationItem.getDistanceFromStart(),
-                                bearingToCompassPoint(locationItem.getBearingFromStart())))
-                .distinct()
-                .collect(Collectors.joining("<br/>"));
 
     }
 
@@ -231,7 +186,7 @@ public class LocationBoard {
                 CollectionUtils.addAll(placemarks, getFlatListPlacemarks(container)));
         return placemarks.stream()
                 .distinct()
-                .filter(kmlPlacemark -> kmlPlacemark != null)
+                .filter(Objects::nonNull)
                 .collect(Collectors.toList());
     }
 
