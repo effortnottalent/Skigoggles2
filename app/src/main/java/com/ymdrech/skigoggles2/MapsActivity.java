@@ -35,6 +35,8 @@ import com.google.maps.android.SphericalUtil;
 import com.google.maps.android.data.kml.KmlLayer;
 import com.google.maps.android.data.kml.KmlPlacemark;
 import com.ymdrech.skigoggles2.location.LocationBoard;
+import com.ymdrech.skigoggles2.location.LocationItem;
+import com.ymdrech.skigoggles2.location.Party;
 import com.ymdrech.skigoggles2.location.dijkstra.Edge;
 import com.ymdrech.skigoggles2.location.dijkstra.Graph;
 import com.ymdrech.skigoggles2.location.dijkstra.KmlLayerAlgorithm;
@@ -48,7 +50,9 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
@@ -66,7 +70,9 @@ import javax.xml.transform.stream.StreamResult;
 import javax.xml.transform.stream.StreamSource;
 
 import static com.ymdrech.skigoggles2.MapsActivity.InfoWindowPage.PAGE_NEAREST_RUNS;
+import static com.ymdrech.skigoggles2.MapsActivity.InfoWindowPage.PAGE_PARTY;
 import static com.ymdrech.skigoggles2.MapsActivity.InfoWindowPage.PAGE_SPEED;
+import static com.ymdrech.skigoggles2.location.LocationBoard.bearingToCompassPoint;
 
 public class MapsActivity extends FragmentActivity implements OnMapReadyCallback,
         GoogleMap.OnPolylineClickListener {
@@ -74,6 +80,8 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
     public static final int MY_PERMISSIONS_REQUEST_ACCESS_FINE_LOCATION = 2;
     public static final LatLng LATLNG_START_POS = new LatLng(51.5169, -3.5815);
     public static final String KML_PATH_IN_ASSET_FOLDER = "kml";
+    
+    private final String TAG = getClass().getCanonicalName();
 
     private LocationManager locationManager;
     private LocationListener locationListener;
@@ -86,11 +94,12 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
     private InfoWindowPage shownPage;
     private KmlLayerAlgorithm kmlLayerAlgorithm;
     private GoogleMap googleMap;
-    private LocationBroadcastService locationBroadcastService = new LocationBroadcastService();
+    private LocationBroadcastService locationBroadcastService;
     private User user;
+    private Party party;
 
     enum InfoWindowPage {
-        PAGE_NEAREST_RUNS, PAGE_SPEED
+        PAGE_NEAREST_RUNS, PAGE_SPEED, PAGE_PARTY
     }
 
     private List<File> tempFilesToCleanupAfterTransform = new ArrayList<>();
@@ -113,6 +122,8 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                 .findFragmentById(R.id.map);
         mapFragment.getMapAsync(this);
         createUser();
+        createParty();
+        locationBroadcastService = new LocationBroadcastService(user, party, this);
 
     }
 
@@ -120,6 +131,11 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         user = new User();
         user.setId(UUID.randomUUID().toString());
         user.setName("Steve Gnarly");
+    }
+
+    void createParty() {
+        party = new Party();
+        party.setId(UUID.randomUUID().toString());
     }
 
     @Override
@@ -264,7 +280,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
             public void onProviderDisabled(String provider) {
             }
         };
-        Log.i(getClass().getCanonicalName(), "registered location listener");
+        Log.i(TAG, "registered location listener");
 
     }
 
@@ -275,9 +291,9 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
             ActivityCompat.requestPermissions(this,
                     new String[]{Manifest.permission.ACCESS_FINE_LOCATION},
                     MY_PERMISSIONS_REQUEST_ACCESS_FINE_LOCATION);
-            Log.i(getClass().getCanonicalName(), "asking for permission for fine location");
+            Log.i(TAG, "asking for permission for fine location");
         } else {
-            Log.i(getClass().getCanonicalName(), "got permission for fine location, requesting location updates");
+            Log.i(TAG, "got permission for fine location, requesting location updates");
             locationManager.requestLocationUpdates(
                     LocationManager.GPS_PROVIDER, 0, 0, locationListener);
         }
@@ -291,7 +307,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
             case MY_PERMISSIONS_REQUEST_ACCESS_FINE_LOCATION:
                 if (grantResults.length > 0
                         && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                    Log.i(getClass().getCanonicalName(), "received okay for access fine location");
+                    Log.i(TAG, "received okay for access fine location");
                     sortOutPermissionsForUpdatingLocation();
                 }
         }
@@ -300,7 +316,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
 
     void addNewLocation(GoogleMap googleMap, Location location) {
 
-        Log.i(getClass().getCanonicalName(), "adding location " + location);
+        Log.i(TAG, "adding location " + location);
         List<LatLng> points = routePolyline == null ? new ArrayList<>() : routePolyline.getPoints();
         LatLng latLng = new LatLng(location.getLatitude(), location.getLongitude());
         points.add(latLng);
@@ -313,7 +329,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         routePolyline.setPoints(points);
         marker.setPosition(latLng);
         updateInfoWindow(marker);
-        locationBroadcastService.broadcastToGroup(user, locationBoard, this);
+        locationBroadcastService.broadcastLocation(user, locationBoard);
 
     }
 
@@ -324,6 +340,9 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                 shownPage = PAGE_NEAREST_RUNS;
                 break;
             case PAGE_NEAREST_RUNS:
+                shownPage = PAGE_PARTY;
+                break;
+            case PAGE_PARTY:
                 shownPage = PAGE_SPEED;
                 break;
         }
@@ -332,23 +351,26 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
     void updateInfoWindow(Marker marker) {
         switch (shownPage) {
             case PAGE_SPEED:
-                marker.setTitle(
-                        String.format("<b>Nearest runs within %sm</b>",
+                marker.setTitle(String.format("<b>Nearest runs within %sm</b>",
                                 locationBoard.getMaxRangeMetres()));
-                marker.setSnippet(locationBoard.toString());
+                marker.setSnippet(getLocationBoardSummary(locationBoard));
                 break;
             case PAGE_NEAREST_RUNS:
                 marker.setSnippet(null);
                 marker.setTitle(
-                        String.format(Locale.ENGLISH, "%.0f km/h, %s",
+                        String.format(Locale.ENGLISH, "%.0f m/s, %s",
                                 locationBoard.getLocation().hasSpeed() ?
                                         locationBoard.getLocation().getSpeed() :
                                         locationBoard.getCalculatedSpeed(),
-                                LocationBoard.bearingToCompassPoint(
+                                bearingToCompassPoint(
                                         locationBoard.getLocation().hasBearing() ?
                                                 locationBoard.getLocation().getBearing() :
                                                 locationBoard.getCalculatedBearing()
                                 )));
+                break;
+            case PAGE_PARTY:
+                marker.setTitle("<b>People in your party</b>");
+                marker.setSnippet(getLocationRegistrySummary(locationBroadcastService));
                 break;
         }
         if (marker.isInfoWindowShown()) {
@@ -357,20 +379,55 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
 
     }
 
+    String getLocationBoardSummary(LocationBoard locationBoard) {
+
+        return Arrays.asList(
+                locationBoard.getLocationItems().toArray(new LocationItem[0])).stream()
+                .sorted(Comparator.comparing(LocationItem::getDistanceFromStart))
+                .map(locationItem ->
+                        String.format(Locale.ENGLISH, "%s (%s): %.0fm %s",
+                                locationItem.getPlacemark().getProperty("name"),
+                                locationItem.getPlacemark().getProperty("description"),
+                                locationItem.getDistanceFromStart(),
+                                bearingToCompassPoint(locationItem.getBearingFromStart())))
+                .distinct()
+                .collect(Collectors.joining("<br/>"));
+    }
+
+    String getLocationRegistrySummary(LocationBroadcastService locationBroadcastService) {
+
+        return locationBroadcastService.getLocationRegistry().entrySet().stream()
+                .map(entry -> {
+                    LocationBroadcastDto value = entry.getValue();
+                    LatLng ourLatLng = new LatLng(locationBoard.getLocation().getLatitude(),
+                            locationBoard.getLocation().getLongitude());
+                    LatLng theirLatLng = new LatLng(value.getLatitude(), value.getLongitude());
+                    double distance = SphericalUtil.computeDistanceBetween(
+                            ourLatLng, theirLatLng);
+                    double bearing = SphericalUtil.computeHeading(ourLatLng, theirLatLng);
+                    return String.format(Locale.ENGLISH,
+                            "%s: %s (%s), %.0f %s",
+                            entry.getValue().getUsername(),
+                            entry.getValue().getRunName(),
+                            entry.getValue().getRunType(),
+                            distance, bearingToCompassPoint(bearing));
+                }).collect(Collectors.joining(", "));
+    }
+
     void loadRunsOntoMap(GoogleMap googleMap) {
 
         Set<KmlLayer> layerSet = new HashSet<>();
         try {
             for (String kml : getAssets().list(KML_PATH_IN_ASSET_FOLDER)) {
                 try {
-                    Log.i(getClass().getCanonicalName(), "loading kml file " + kml);
+                    Log.i(TAG, "loading kml file " + kml);
                     KmlLayer kmlLayer = new KmlLayer(googleMap, xsltTransform(kml),
                             getApplicationContext());
                     kmlLayer.addLayerToMap();
                     layerSet.add(kmlLayer);
                     kmlLayerAlgorithm = new KmlLayerAlgorithm(kmlLayer);
                 } catch (XmlPullParserException e) {
-                    Log.e(getClass().getCanonicalName(), "couldn't parse kml", e);
+                    Log.e(TAG, "couldn't parse kml", e);
                 }
             }
         } catch (IOException e) {
@@ -397,9 +454,9 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                 transformer.transform(text, new StreamResult(tempfile));
                 return new FileInputStream(tempfile);
             } catch (IOException e) {
-                Log.e(getClass().getCanonicalName(), "could load xslt", e);
+                Log.e(TAG, "could load xslt", e);
             } catch (TransformerException e) {
-                Log.e(getClass().getCanonicalName(), "transformer exception", e);
+                Log.e(TAG, "transformer exception", e);
             }
 
         } else {
@@ -407,7 +464,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
             try {
                 return getAssets().open(KML_PATH_IN_ASSET_FOLDER + "/" + kmlName);
             } catch (IOException e) {
-                Log.e(getClass().getCanonicalName(), "could load kml", e);
+                Log.e(TAG, "could load kml", e);
             }
 
         }
@@ -499,7 +556,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                 });
                 routeString = KmlLayerAlgorithm.formatVertexList(route);
             }
-            Log.i(getClass().getCanonicalName(), routeString);
+            Log.i(TAG, routeString);
             Toast.makeText(this, routeString, Toast.LENGTH_LONG).show();
 
         }

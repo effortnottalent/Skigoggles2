@@ -37,6 +37,8 @@ public class LocationBoard {
     public static final float RUN_THRESHOLD_METRES = 100;
     public static final float DEFAULT_MAX_RANGE_METRES = 1000;
 
+    private final String TAG = getClass().getCanonicalName();
+    
     private Location location;
     private KmlPlacemark placemark;
     private Set<LocationItem> locationItems = new HashSet<>();

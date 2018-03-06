@@ -1,5 +1,5 @@
 <resources>
     <string name="app_name">Skigoggles2</string>
     <string name="title_activity_maps">Map</string>
-    <string name="location_broadcast_endpoint">https://requestb.in/1nqlm3x1</string>
+    <string name="location_broadcast_endpoint">http://mockbin.org/bin/e781e6bb-63b3-45f6-aeb7-e93677eb0c94/view</string>
 </resources>

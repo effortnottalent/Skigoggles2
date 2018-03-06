@@ -32,6 +32,8 @@ import static com.ymdrech.skigoggles2.utils.Maps.*;
 
 public class KmlLayerAlgorithm extends Algorithm {
 
+    private final String TAG = getClass().getCanonicalName();
+
     private KmlLayer kmlLayer;
 
     private Set<Vertex> vertices = new HashSet<>();

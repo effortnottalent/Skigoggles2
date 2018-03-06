@@ -15,9 +15,16 @@ import lombok.Data;
 @Data
 public class LocationBroadcastDto {
 
+    private String username;
     private String userId;
-    private Location location;
+    private double longitude;
+    private double latitude;
+    private double altitude;
+    private double accuracy;
+    private double bearing;
     private Date date;
-    private KmlPlacemark placemark;
+    private String runName;
+    private String runType;
+    private String partyId;
 
 }
