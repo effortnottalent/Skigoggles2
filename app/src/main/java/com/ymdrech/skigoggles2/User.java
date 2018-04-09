@@ -7,7 +7,7 @@ import lombok.Data;
  */
 
 @Data
-class User {
+public class User {
     private String id;
     private String name;
 }

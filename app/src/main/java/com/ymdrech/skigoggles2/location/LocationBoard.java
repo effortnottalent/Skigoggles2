@@ -1,7 +1,6 @@
 package com.ymdrech.skigoggles2.location;
 
 import android.location.Location;
-import android.util.Log;
 
 import com.google.android.gms.maps.model.LatLng;
 import com.google.maps.android.SphericalUtil;
@@ -12,18 +11,15 @@ import com.google.maps.android.data.kml.KmlPlacemark;
 import org.apache.commons.collections4.CollectionUtils;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
-import java.util.stream.StreamSupport;
 
 import lombok.Data;
 
@@ -40,27 +36,12 @@ public class LocationBoard {
     private final String TAG = getClass().getCanonicalName();
     
     private Location location;
-    private KmlPlacemark placemark;
+    private KmlPlacemark currentPlacemark;
     private Set<LocationItem> locationItems = new HashSet<>();
     private float maxRangeMetres = DEFAULT_MAX_RANGE_METRES;
-    private Set<KmlLayer> kmlLayerSet;
+    private Set<KmlPlacemark> allPlacemarks = new HashSet<>();
     private double calculatedSpeed;
     private double calculatedBearing;
-
-    public LocationBoard(Location location, float maxRangeMetres, Set<KmlLayer> kmlLayerSet) {
-        this.location = location;
-        this.maxRangeMetres = maxRangeMetres;
-        this.kmlLayerSet = kmlLayerSet;
-    }
-
-    public LocationBoard(Location location, Set<KmlLayer> kmlLayerSet) {
-        this.location = location;
-        this.kmlLayerSet = kmlLayerSet;
-    }
-
-    public LocationBoard(Set<KmlLayer> kmlLayerSet) {
-        this.kmlLayerSet = kmlLayerSet;
-    }
 
     public void setLocationItems(Set<LocationItem> locationItems) {
         this.locationItems = locationItems;
@@ -75,16 +56,14 @@ public class LocationBoard {
         calculatedBearing = getCalculatedBearing(this.location, location);
         this.location = location;
         updateLocationItems();
-        this.placemark = findNearestKmlPlacemark();
+        this.currentPlacemark = findNearestKmlPlacemark();
     }
 
     KmlPlacemark findNearestKmlPlacemark() {
 
         LatLng latLng = new LatLng(location.getLatitude(), location.getLongitude());
         Map<KmlPlacemark, Double> placemarkDistances = new HashMap<>();
-        kmlLayerSet.stream().map(LocationBoard::getFlatListPlacemarks)
-                .flatMap(Collection::stream)
-                .collect(Collectors.toList()).stream()
+        allPlacemarks.stream()
                 .filter(kmlPlacemark -> getPoints(kmlPlacemark).size() != 0)
                 .forEach(kmlPlacemark ->
                     placemarkDistances.put(kmlPlacemark,
@@ -137,7 +116,7 @@ public class LocationBoard {
         }
         LatLng currentLatLng = new LatLng(location.getLatitude(), location.getLongitude());
         Set<LocationItem> newLocationItems = new HashSet<>();
-        kmlLayerSet.forEach(kmlLayer -> getFlatListPlacemarks(kmlLayer).forEach(kmlPlacemark -> {
+        allPlacemarks.forEach(kmlPlacemark -> {
             List<LatLng> points = getPoints(kmlPlacemark);
             if (points.size() != 0) {
                 double distanceFromStartMetres = SphericalUtil.computeDistanceBetween(
@@ -153,7 +132,7 @@ public class LocationBoard {
                     }
                 }
             }
-        }));
+        });
         if(newLocationItems != locationItems) {
             locationItems = newLocationItems;
         }
@@ -167,8 +146,6 @@ public class LocationBoard {
                 "S", "SSW", "SW", "WSW",
                 "W", "WNW", "NW", "NNW" };
         int index = Long.valueOf(Math.round((bearing + 360) / 22.5)).intValue() % 16;
-        Log.d(String.format("bearing: %.2f -> index: %d", bearing, index),
-                LocationBoard.class.getCanonicalName());
         return compassPoints[index];
     }
 

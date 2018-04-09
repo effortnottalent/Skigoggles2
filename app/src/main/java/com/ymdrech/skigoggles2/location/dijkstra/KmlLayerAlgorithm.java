@@ -11,6 +11,7 @@ import com.google.android.gms.maps.model.SquareCap;
 import com.google.maps.android.SphericalUtil;
 import com.google.maps.android.data.kml.KmlLayer;
 import com.google.maps.android.data.kml.KmlPlacemark;
+import com.ymdrech.skigoggles2.R;
 import com.ymdrech.skigoggles2.location.LocationBoard;
 
 import java.util.ArrayList;
@@ -49,16 +50,17 @@ public class KmlLayerAlgorithm extends Algorithm {
             entry("chairlift", 3d),
             entry("button lift", 3d),
             entry("drag lift", 3d),
-            entry("gondola", 3d),
+            entry("gondola lift", 3d),
             entry("cable car", 3d),
-            entry("green", 10d),
-            entry("red", 20d),
-            entry("black", 20d),
-            entry("blue", 20d)).collect(entriesToMap()));
+            entry("green", 8d),
+            entry("red", 8d),
+            entry("black", 8d),
+            entry("blue", 8d))
+                    .collect(entriesToMap()));
 
-    private static final Double SPEED_WALKING = 1d;
-    private static final Double TIME_MAX = 300d;
-    private static final Double METRES_OFF_END_OF_RUN_TO_OTHER_RUN = 50d;
+    public static final double SPEED_WALKING = 1d;
+    private static final double TIME_MAX = 300d;
+    private static final double METRES_OFF_END_OF_RUN_TO_OTHER_RUN = 50d;
 
     public Graph createGraph(KmlLayer kmlLayer) {
 
@@ -183,24 +185,6 @@ public class KmlLayerAlgorithm extends Algorithm {
             return null;
         }
 
-    }
-
-    public static String formatVertexList(List<Vertex> vertices) {
-        return vertices.stream()
-                .map(vertex -> {
-                    if(vertex.getPlacemark() != null) {
-                        List<LatLng> points = LocationBoard.getPoints(vertex.getPlacemark());
-                        return String.format("%s of %s (%s)",
-                                vertex.getLatLng() == points.get(0) ? "start" :
-                                        vertex.getLatLng() == points.get(points.size() - 1) ?
-                                                "end" : "mid",
-                                vertex.getPlacemark().getProperty("name"),
-                                vertex.getPlacemark().getProperty("description"));
-                    } else {
-                        return "(unnamed)";
-                    }
-                })
-                .collect(Collectors.joining(" -> "));
     }
 
     public static Vertex createNewVertex(LatLng point, KmlPlacemark placemark) {

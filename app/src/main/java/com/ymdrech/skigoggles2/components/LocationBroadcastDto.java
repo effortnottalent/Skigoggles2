@@ -1,4 +1,4 @@
-package com.ymdrech.skigoggles2;
+package com.ymdrech.skigoggles2.components;
 
 import android.location.Location;
 
@@ -22,6 +22,7 @@ public class LocationBroadcastDto {
     private double altitude;
     private double accuracy;
     private double bearing;
+    private double speed;
     private Date date;
     private String runName;
     private String runType;

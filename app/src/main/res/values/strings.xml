@@ -1,5 +1,14 @@
 <resources>
     <string name="app_name">Skigoggles2</string>
     <string name="title_activity_maps">Map</string>
-    <string name="location_broadcast_endpoint">http://mockbin.org/bin/e781e6bb-63b3-45f6-aeb7-e93677eb0c94/view</string>
+    <string name="location_broadcast_endpoint">http://10.0.2.2:8080/location</string>
+    <string name="notification_title">Skigoggles2</string>
+    <string name="ticker_text">Skigoggles2 is logging your location.</string>
+    <string name="notification_group_service">skigoggles2_notification_group_service</string>
+    <string name="notification_group_notification">skigoggles2_notification_group_notification</string>
+    <string name="notification_message">Skigoggles2 is logging your location.</string>
+    <string name="channel_id_normal">skigoggles2_channel_normal</string>
+    <string name="channel_id_important">skigoggles2_channel_important</string>
+    <string name="channel_name">skigoggles2_channel</string>
+    <string name="channel_description">Skigoggles2 Channel</string>
 </resources>

@@ -1,7 +1,9 @@
 package com.ymdrech.skigoggles2;
 
-import android.Manifest;
+import android.content.ComponentName;
 import android.content.Context;
+import android.content.Intent;
+import android.content.ServiceConnection;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
@@ -9,14 +11,11 @@ import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.Rect;
 import android.location.Location;
-import android.location.LocationListener;
-import android.location.LocationManager;
 import android.os.Bundle;
+import android.os.IBinder;
 import android.support.annotation.NonNull;
-import android.support.v4.app.ActivityCompat;
 import android.support.v4.app.FragmentActivity;
 import android.util.Log;
-import android.widget.Toast;
 
 import com.google.android.gms.maps.CameraUpdateFactory;
 import com.google.android.gms.maps.GoogleMap;
@@ -33,14 +32,14 @@ import com.google.android.gms.maps.model.Polyline;
 import com.google.android.gms.maps.model.PolylineOptions;
 import com.google.maps.android.SphericalUtil;
 import com.google.maps.android.data.kml.KmlLayer;
-import com.google.maps.android.data.kml.KmlPlacemark;
+import com.ymdrech.skigoggles2.components.LocationBroadcastComponent;
+import com.ymdrech.skigoggles2.components.LocationBroadcastDto;
 import com.ymdrech.skigoggles2.location.LocationBoard;
 import com.ymdrech.skigoggles2.location.LocationItem;
-import com.ymdrech.skigoggles2.location.Party;
-import com.ymdrech.skigoggles2.location.dijkstra.Edge;
-import com.ymdrech.skigoggles2.location.dijkstra.Graph;
 import com.ymdrech.skigoggles2.location.dijkstra.KmlLayerAlgorithm;
 import com.ymdrech.skigoggles2.location.dijkstra.Vertex;
+import com.ymdrech.skigoggles2.services.LocationCallbacks;
+import com.ymdrech.skigoggles2.services.LocationService;
 import com.ymdrech.skigoggles2.utils.Maps;
 
 import org.xmlpull.v1.XmlPullParserException;
@@ -58,7 +57,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
-import java.util.UUID;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -73,30 +71,26 @@ import static com.ymdrech.skigoggles2.MapsActivity.InfoWindowPage.PAGE_NEAREST_R
 import static com.ymdrech.skigoggles2.MapsActivity.InfoWindowPage.PAGE_PARTY;
 import static com.ymdrech.skigoggles2.MapsActivity.InfoWindowPage.PAGE_SPEED;
 import static com.ymdrech.skigoggles2.location.LocationBoard.bearingToCompassPoint;
+import static com.ymdrech.skigoggles2.services.LocationService.MY_PERMISSIONS_REQUEST_ACCESS_FINE_LOCATION;
 
 public class MapsActivity extends FragmentActivity implements OnMapReadyCallback,
-        GoogleMap.OnPolylineClickListener {
+        GoogleMap.OnPolylineClickListener, LocationCallbacks {
 
-    public static final int MY_PERMISSIONS_REQUEST_ACCESS_FINE_LOCATION = 2;
     public static final LatLng LATLNG_START_POS = new LatLng(51.5169, -3.5815);
     public static final String KML_PATH_IN_ASSET_FOLDER = "kml";
-    
+
     private final String TAG = getClass().getCanonicalName();
 
-    private LocationManager locationManager;
-    private LocationListener locationListener;
     private Polyline routePolyline;
     private List<Polyline> shortestRoutePolylineList = new ArrayList<>();
     private List<Circle> shortestRoutePoints = new ArrayList<>();
     private TransformerFactory transformerFactory = TransformerFactory.newInstance();
     private Marker marker;
-    private LocationBoard locationBoard;
     private InfoWindowPage shownPage;
-    private KmlLayerAlgorithm kmlLayerAlgorithm;
     private GoogleMap googleMap;
-    private LocationBroadcastService locationBroadcastService;
-    private User user;
-    private Party party;
+    private LocationService locationService;
+    private boolean bound;
+    private Set<KmlLayer> layerSet = new HashSet<>();
 
     enum InfoWindowPage {
         PAGE_NEAREST_RUNS, PAGE_SPEED, PAGE_PARTY
@@ -109,8 +103,53 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                     Maps.entry("881467.kml", "three_valleys_snowheads.xslt"))
                     .collect(Maps.entriesToMap()));
 
-    protected KmlLayerAlgorithm getKmlLayerAlgorithm() {
-        return kmlLayerAlgorithm;
+    private ServiceConnection serviceConnection = new ServiceConnection() {
+
+        @Override
+        public void onServiceConnected(ComponentName className, IBinder service) {
+            LocationService.LocalBinder binder = (LocationService.LocalBinder) service;
+            locationService = binder.getService();
+            bound = true;
+            initialiseLocationService();
+        }
+
+        @Override
+        public void onServiceDisconnected(ComponentName arg0) {
+            bound = false;
+        }
+    };
+
+    private void initialiseLocationService() {
+
+        locationService.setLocationCallbacks(this);
+        locationService.requestLocationUpdates(this);
+        layerSet.forEach(locationService::processKmlLayer);
+        addOnClickToRuns(googleMap);
+        addRunNames(googleMap);
+        locationService.startInForeground(this);
+
+    }
+
+    @Override
+    public void receiveLocationUpdate(Location location) {
+        addNewLocation(googleMap, location);
+    }
+
+    @Override
+    protected void onStart() {
+        super.onStart();
+        Intent intent = new Intent(this, LocationService.class);
+        bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE);
+    }
+
+    @Override
+    protected void onStop() {
+        super.onStop();
+        if (bound) {
+            locationService.setLocationCallbacks(null); // unregister
+            unbindService(serviceConnection);
+            bound = false;
+        }
     }
 
     @Override
@@ -121,21 +160,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         SupportMapFragment mapFragment = (SupportMapFragment) getSupportFragmentManager()
                 .findFragmentById(R.id.map);
         mapFragment.getMapAsync(this);
-        createUser();
-        createParty();
-        locationBroadcastService = new LocationBroadcastService(user, party, this);
 
-    }
-
-    void createUser() {
-        user = new User();
-        user.setId(UUID.randomUUID().toString());
-        user.setName("Steve Gnarly");
-    }
-
-    void createParty() {
-        party = new Party();
-        party.setId(UUID.randomUUID().toString());
     }
 
     @Override
@@ -149,19 +174,12 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
 
         this.googleMap = googleMap;
         initMap(googleMap);
-        registerLocationListener(googleMap);
-        sortOutPermissionsForUpdatingLocation();
         loadRunsOntoMap(googleMap);
-        addOnClickToRuns(googleMap);
-        addRunNames(googleMap);
     }
 
     void addOnClickToRuns(final GoogleMap googleMap) {
 
-        locationBoard.getKmlLayerSet().stream()
-                .map(LocationBoard::getFlatListPlacemarks)
-                .flatMap(List::stream)
-                .collect(Collectors.toList())
+        locationService.getLocationBoard().getAllPlacemarks()
                 .forEach(kmlPlacemark -> {
                     if(kmlPlacemark.getInlineStyle() != null) {
                         kmlPlacemark.getPolylineOptions().clickable(true);
@@ -172,10 +190,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
 
     void addRunNames(final GoogleMap googleMap) {
 
-        locationBoard.getKmlLayerSet().stream()
-                .map(LocationBoard::getFlatListPlacemarks)
-                .flatMap(List::stream)
-                .collect(Collectors.toList())
+        locationService.getLocationBoard().getAllPlacemarks()
                 .forEach(kmlPlacemark -> {
                     List<LatLng> points = LocationBoard.getPoints(kmlPlacemark);
                     if(points.size() > 0 && kmlPlacemark.getProperty("name") != null) {
@@ -263,43 +278,6 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
 
     }
 
-    void registerLocationListener(final GoogleMap googleMap) {
-
-        locationManager = (LocationManager) this.getSystemService(Context.LOCATION_SERVICE);
-        locationListener = new LocationListener() {
-            public void onLocationChanged(Location location) {
-                addNewLocation(googleMap, location);
-            }
-
-            public void onStatusChanged(String provider, int status, Bundle extras) {
-            }
-
-            public void onProviderEnabled(String provider) {
-            }
-
-            public void onProviderDisabled(String provider) {
-            }
-        };
-        Log.i(TAG, "registered location listener");
-
-    }
-
-    void sortOutPermissionsForUpdatingLocation() {
-
-        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
-                != PackageManager.PERMISSION_GRANTED) {
-            ActivityCompat.requestPermissions(this,
-                    new String[]{Manifest.permission.ACCESS_FINE_LOCATION},
-                    MY_PERMISSIONS_REQUEST_ACCESS_FINE_LOCATION);
-            Log.i(TAG, "asking for permission for fine location");
-        } else {
-            Log.i(TAG, "got permission for fine location, requesting location updates");
-            locationManager.requestLocationUpdates(
-                    LocationManager.GPS_PROVIDER, 0, 0, locationListener);
-        }
-
-    }
-
     @Override
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
 
@@ -308,7 +286,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                 if (grantResults.length > 0
                         && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
                     Log.i(TAG, "received okay for access fine location");
-                    sortOutPermissionsForUpdatingLocation();
+                    locationService.requestLocationUpdates(this);
                 }
         }
 
@@ -316,7 +294,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
 
     void addNewLocation(GoogleMap googleMap, Location location) {
 
-        Log.i(TAG, "adding location " + location);
+        LocationBoard locationBoard = locationService.getLocationBoard();
         List<LatLng> points = routePolyline == null ? new ArrayList<>() : routePolyline.getPoints();
         LatLng latLng = new LatLng(location.getLatitude(), location.getLongitude());
         points.add(latLng);
@@ -329,7 +307,6 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         routePolyline.setPoints(points);
         marker.setPosition(latLng);
         updateInfoWindow(marker);
-        locationBroadcastService.broadcastLocation(user, locationBoard);
 
     }
 
@@ -349,6 +326,8 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
     }
 
     void updateInfoWindow(Marker marker) {
+
+        LocationBoard locationBoard = locationService.getLocationBoard();
         switch (shownPage) {
             case PAGE_SPEED:
                 marker.setTitle(String.format("<b>Nearest runs within %sm</b>",
@@ -370,7 +349,8 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                 break;
             case PAGE_PARTY:
                 marker.setTitle("<b>People in your party</b>");
-                marker.setSnippet(getLocationRegistrySummary(locationBroadcastService));
+                marker.setSnippet(getLocationRegistrySummary(
+                        locationService.getLocationBroadcastComponent()));
                 break;
         }
         if (marker.isInfoWindowShown()) {
@@ -394,9 +374,10 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                 .collect(Collectors.joining("<br/>"));
     }
 
-    String getLocationRegistrySummary(LocationBroadcastService locationBroadcastService) {
+    String getLocationRegistrySummary(LocationBroadcastComponent locationBroadcastComponent) {
 
-        return locationBroadcastService.getLocationRegistry().entrySet().stream()
+        LocationBoard locationBoard = locationService.getLocationBoard();
+        return locationBroadcastComponent.getLocationRegistry().entrySet().stream()
                 .map(entry -> {
                     LocationBroadcastDto value = entry.getValue();
                     LatLng ourLatLng = new LatLng(locationBoard.getLocation().getLatitude(),
@@ -411,12 +392,11 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                             entry.getValue().getRunName(),
                             entry.getValue().getRunType(),
                             distance, bearingToCompassPoint(bearing));
-                }).collect(Collectors.joining(", "));
+                }).collect(Collectors.joining("<br/>"));
     }
 
     void loadRunsOntoMap(GoogleMap googleMap) {
 
-        Set<KmlLayer> layerSet = new HashSet<>();
         try {
             for (String kml : getAssets().list(KML_PATH_IN_ASSET_FOLDER)) {
                 try {
@@ -425,7 +405,6 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                             getApplicationContext());
                     kmlLayer.addLayerToMap();
                     layerSet.add(kmlLayer);
-                    kmlLayerAlgorithm = new KmlLayerAlgorithm(kmlLayer);
                 } catch (XmlPullParserException e) {
                     Log.e(TAG, "couldn't parse kml", e);
                 }
@@ -436,7 +415,6 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
             tempFilesToCleanupAfterTransform.forEach(File::delete);
             tempFilesToCleanupAfterTransform.clear();
         }
-        locationBoard = new LocationBoard(layerSet);
 
     }
 
@@ -472,94 +450,31 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         return null;
     }
 
+    void renderRouteOnMap(List<Vertex> route) {
+
+        shortestRoutePoints.forEach(Circle::remove);
+        shortestRoutePolylineList.forEach(Polyline::remove);
+        route.forEach(vertex -> {
+            Circle circleOptions = googleMap.addCircle(new CircleOptions()
+                    .center(vertex.getLatLng())
+                    .radius(30d)
+                    .zIndex(1000)
+                    .fillColor(Color.argb(200,255,255,255))
+                    .strokeColor(Color.WHITE));
+            shortestRoutePoints.add(circleOptions);
+            if(vertex.getPlacemark() != null) {
+                Polyline polyline2 = googleMap.addPolyline(new PolylineOptions()
+                        .color(Color.argb(100,255,255,255))
+                        .width(20)
+                        .zIndex(1000)
+                        .addAll(LocationBoard.getPoints(vertex.getPlacemark())));
+                shortestRoutePolylineList.add(polyline2);
+            }
+        });
+    }
+
     public void onPolylineClick(Polyline polyline) {
-
-        if (locationBoard != null) {
-
-            Graph graph = kmlLayerAlgorithm.getGraph();
-            List<Vertex> oldVertices = new ArrayList<>(graph.getVertexes());
-            List<Edge> oldEdges = new ArrayList<>(graph.getEdges());
-
-            // source vertex
-
-            KmlPlacemark placemark = locationBoard.getPlacemark();
-            Vertex sourceVertex = KmlLayerAlgorithm.createNewVertex(
-                    new LatLng(locationBoard.getLocation().getLatitude(),
-                            locationBoard.getLocation().getLongitude()), placemark);
-            graph.getVertexes().add(sourceVertex);
-            if(placemark != null) {
-
-                // add edge from source to end of current run
-                // assume end of current run vertex is always present
-
-                List<LatLng> points = LocationBoard.getPoints(placemark);
-                Vertex endOfCurrentRunVertex = KmlLayerAlgorithm.createNewVertex(points.get(points.size() - 1),
-                        placemark);
-                Edge sourceEdge = KmlLayerAlgorithm.createNewEdge(sourceVertex, endOfCurrentRunVertex,
-                        placemark);
-                graph.getEdges().add(sourceEdge);
-
-                // add edges from source to any midpoints on current run: TODO
-
-            } else {
-
-                // connect to nearest run via traverse
-                throw new UnsupportedOperationException(
-                        "not yet supported for source nodes off runs");
-
-            }
-
-            KmlPlacemark targetPlacemark = locationBoard.getKmlLayerSet().stream()
-                    .map(LocationBoard::getFlatListPlacemarks)
-                    .flatMap(List::stream)
-                    .collect(Collectors.toList())
-                    .stream()
-                    .filter(kmlPlacemark -> polyline.getPoints().equals(
-                            LocationBoard.getPoints(kmlPlacemark)))
-                    .findFirst().get();
-
-            // assume target vertex is always present
-
-            Vertex targetVertex = KmlLayerAlgorithm.createNewVertex(
-                    LocationBoard.getPoints(targetPlacemark).get(0), targetPlacemark);
-
-            // reinit graph and execute
-
-            kmlLayerAlgorithm.execute(sourceVertex);
-            // kmlLayerAlgorithm.drawMap(googleMap);
-            List<Vertex> route = kmlLayerAlgorithm.getPath(targetVertex);
-
-            // reset graph
-
-            kmlLayerAlgorithm.setGraph(new Graph(oldVertices, oldEdges));
-
-            String routeString = "Can't find route...";
-            if(route != null) {
-                shortestRoutePoints.forEach(Circle::remove);
-                shortestRoutePolylineList.forEach(Polyline::remove);
-                route.forEach(vertex -> {
-                    Circle circleOptions = googleMap.addCircle(new CircleOptions()
-                            .center(vertex.getLatLng())
-                            .radius(30d)
-                            .zIndex(1000)
-                            .fillColor(Color.argb(200,255,255,255))
-                            .strokeColor(Color.WHITE));
-                    shortestRoutePoints.add(circleOptions);
-                    if(vertex.getPlacemark() != null) {
-                        Polyline polyline2 = googleMap.addPolyline(new PolylineOptions()
-                                .color(Color.argb(100,255,255,255))
-                                .width(20)
-                                .zIndex(1000)
-                                .addAll(LocationBoard.getPoints(vertex.getPlacemark())));
-                        shortestRoutePolylineList.add(polyline2);
-                    }
-                });
-                routeString = KmlLayerAlgorithm.formatVertexList(route);
-            }
-            Log.i(TAG, routeString);
-            Toast.makeText(this, routeString, Toast.LENGTH_LONG).show();
-
-        }
-
+        List<Vertex> shortestRoute = locationService.getShortestRoute(polyline);
+        renderRouteOnMap(shortestRoute);
     }
 }
