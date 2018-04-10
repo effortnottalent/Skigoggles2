@@ -2,7 +2,6 @@ package com.ymdrech.skigoggles2.services;
 
 import android.Manifest;
 import android.app.Activity;
-import android.app.IntentService;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
@@ -19,25 +18,26 @@ import android.os.Binder;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.IBinder;
-import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
 import android.support.v4.app.ActivityCompat;
 import android.support.v4.app.NotificationCompat;
 import android.support.v4.app.NotificationManagerCompat;
 import android.util.Log;
 
-import com.google.android.gms.maps.GoogleMap;
 import com.google.android.gms.maps.model.LatLng;
 import com.google.android.gms.maps.model.Polyline;
 import com.google.maps.android.SphericalUtil;
 import com.google.maps.android.data.kml.KmlLayer;
 import com.google.maps.android.data.kml.KmlPlacemark;
-import com.ymdrech.skigoggles2.MapsActivity;
 import com.ymdrech.skigoggles2.NotificationItem;
 import com.ymdrech.skigoggles2.R;
 import com.ymdrech.skigoggles2.User;
 import com.ymdrech.skigoggles2.components.LocationBroadcastComponent;
 import com.ymdrech.skigoggles2.db.AppDatabase;
+import com.ymdrech.skigoggles2.db.Datapoint;
+import com.ymdrech.skigoggles2.db.DatapointDao;
+import com.ymdrech.skigoggles2.db.Session;
+import com.ymdrech.skigoggles2.db.SessionDao;
 import com.ymdrech.skigoggles2.location.LocationBoard;
 import com.ymdrech.skigoggles2.location.Party;
 import com.ymdrech.skigoggles2.location.dijkstra.Edge;
@@ -47,6 +47,7 @@ import com.ymdrech.skigoggles2.location.dijkstra.Vertex;
 
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
@@ -56,8 +57,6 @@ import java.util.Random;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
-import lombok.AccessLevel;
-import lombok.Data;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -76,6 +75,8 @@ public class LocationService extends Service {
     private final String TAG = getClass().getCanonicalName();
 
     private final Random random = new Random();
+    private AppDatabase db;
+    private Session session;
 
     private LocationListener locationListener;
     private User user;
@@ -100,6 +101,7 @@ public class LocationService extends Service {
         createUser();
         createParty();
         loadDatabase();
+        startSession();
         locationBroadcastComponent = new LocationBroadcastComponent(user, party, this);
         locationManager = (LocationManager) this.getSystemService(Context.LOCATION_SERVICE);
         registerLocationListener();
@@ -107,7 +109,7 @@ public class LocationService extends Service {
     }
 
     public void loadDatabase() {
-        AppDatabase db = Room.databaseBuilder(getApplicationContext(),
+        db = Room.databaseBuilder(getApplicationContext(),
                 AppDatabase.class, "skigoggles2").build();
     }
 
@@ -173,6 +175,7 @@ public class LocationService extends Service {
                     Log.d(TAG, String.format("got new location %s", location));
                     locationCallbacks.receiveLocationUpdate(location);
                     locationBroadcastComponent.broadcastLocation(user, locationBoard);
+                    recordLocation(location);
                     addNotificationApproachingNextNode();
                 }
             }
@@ -181,6 +184,31 @@ public class LocationService extends Service {
             public void onProviderDisabled(String provider) {}
         };
         Log.i(TAG, "registered location listener");
+
+    }
+
+    void startSession() {
+        session = new Session();
+        session.setPartyId(party.getId());
+        session.setName(String.format("Test Session - %s", new Date()));
+        new Thread(() -> db.sessionDao().save(session)).start();
+
+    }
+
+    void recordLocation(Location location) {
+
+        Datapoint datapoint = new Datapoint();
+        datapoint.setAltitude(location.getAltitude());
+        datapoint.setBearing(location.getBearing());
+        datapoint.setLatitude(location.getLatitude());
+        datapoint.setLongitude(location.getLongitude());
+        if(locationBoard.getCurrentPlacemark() != null) {
+            datapoint.setRunName(locationBoard.getCurrentPlacemark().getProperty("name"));
+        }
+        datapoint.setSessionId(session.getId());
+        datapoint.setSpeed(location.getSpeed());
+        datapoint.setTimestamp(new Date().getTime());
+        new Thread(() -> db.datapointDao().save(datapoint)).start();
 
     }
 

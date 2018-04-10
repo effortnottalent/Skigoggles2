@@ -4,8 +4,10 @@ import android.arch.persistence.room.Entity;
 import android.arch.persistence.room.ForeignKey;
 import android.arch.persistence.room.Index;
 import android.arch.persistence.room.PrimaryKey;
+import android.support.annotation.NonNull;
 
 import java.util.Date;
+import java.util.UUID;
 
 import lombok.Data;
 
@@ -13,7 +15,10 @@ import lombok.Data;
  * Created by richard.mathias on 27/03/2018.
  */
 
-@Entity(indices = @Index("sessionId"),
+@Entity(indices = {
+            @Index("sessionId"),
+            @Index("id")
+        },
         foreignKeys = @ForeignKey(
             entity = Session.class,
             parentColumns = "id",
@@ -21,8 +26,9 @@ import lombok.Data;
 @Data
 public class Datapoint {
 
-    @PrimaryKey(autoGenerate = true)
-    private int id;
+    @PrimaryKey
+    @NonNull
+    private String id = UUID.randomUUID().toString();
     private double longitude;
     private double latitude;
     private double altitude;
@@ -31,5 +37,5 @@ public class Datapoint {
     private String runName;
     private String runType;
     private long timestamp;
-    private int sessionId;
+    private String sessionId;
 }
