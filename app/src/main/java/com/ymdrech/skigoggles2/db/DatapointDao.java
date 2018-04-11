@@ -21,6 +21,9 @@ public interface DatapointDao {
     @Query("SELECT * FROM Datapoint WHERE runName = :runName ORDER BY timestamp ASC")
     List<Datapoint> findByRunName(String runName);
 
+    @Query("SELECT * FROM Datapoint WHERE sessionId = :sessionId ORDER BY timestamp ASC")
+    List<Datapoint> findBySessionId(String sessionId);
+
     @Insert
     public void save(Datapoint session);
 

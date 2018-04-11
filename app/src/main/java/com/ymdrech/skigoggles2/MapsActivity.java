@@ -329,13 +329,12 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
 
         LocationBoard locationBoard = locationService.getLocationBoard();
         switch (shownPage) {
-            case PAGE_SPEED:
+            case PAGE_NEAREST_RUNS:
                 marker.setTitle(String.format("<b>Nearest runs within %sm</b>",
                                 locationBoard.getMaxRangeMetres()));
                 marker.setSnippet(getLocationBoardSummary(locationBoard));
                 break;
-            case PAGE_NEAREST_RUNS:
-                marker.setSnippet(null);
+            case PAGE_SPEED:
                 marker.setTitle(
                         String.format(Locale.ENGLISH, "%.0f m/s, %s",
                                 locationBoard.getLocation().hasSpeed() ?
@@ -346,6 +345,9 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                                                 locationBoard.getLocation().getBearing() :
                                                 locationBoard.getCalculatedBearing()
                                 )));
+                marker.setSnippet(String.format(Locale.getDefault(),"%.0f m, %.0f min",
+                        locationBoard.getSessionDistance(),
+                        locationBoard.getSessionTimeSeconds() / 60));
                 break;
             case PAGE_PARTY:
                 marker.setTitle("<b>People in your party</b>");

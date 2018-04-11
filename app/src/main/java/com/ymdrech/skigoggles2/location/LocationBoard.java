@@ -42,6 +42,8 @@ public class LocationBoard {
     private Set<KmlPlacemark> allPlacemarks = new HashSet<>();
     private double calculatedSpeed;
     private double calculatedBearing;
+    private double sessionDistance = 0.0;
+    private double sessionTimeSeconds = 0.0;
 
     public void setLocationItems(Set<LocationItem> locationItems) {
         this.locationItems = locationItems;
@@ -54,6 +56,12 @@ public class LocationBoard {
     public void setLocationAndUpdateItems(Location location) {
         calculatedSpeed = getInstantaneousSpeed(this.location, location);
         calculatedBearing = getCalculatedBearing(this.location, location);
+        if(this.location != null) {
+            sessionTimeSeconds += (location.getTime() - this.location.getTime()) / 1000;
+            sessionDistance += SphericalUtil.computeDistanceBetween(
+                    new LatLng(this.location.getLatitude(), this.location.getLongitude()),
+                    new LatLng(location.getLatitude(), location.getLongitude()));
+        }
         this.location = location;
         updateLocationItems();
         this.currentPlacemark = findNearestKmlPlacemark();
